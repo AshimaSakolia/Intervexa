@@ -56,15 +56,24 @@ frontend/
   src/app/resume            upload resumes, browse parsed analysis
   src/app/resources         static interview-prep guide
 
-docker-compose.yml   local MySQL for development
 ```
 
 ## Running locally
 
-### 1. Start MySQL
+### 1. Set up MySQL
+
+Use a local MySQL 8 instance (installed directly, or run your own container),
+and create a database and user matching what you put in `DATABASE_URL` below.
+For example, with Docker:
 
 ```bash
-docker compose up -d
+docker run -d --name interviewiq-mysql \
+  -e MYSQL_ROOT_PASSWORD=rootpassword \
+  -e MYSQL_DATABASE=interviewiq \
+  -e MYSQL_USER=interviewiq \
+  -e MYSQL_PASSWORD=interviewiq \
+  -p 3308:3306 \
+  mysql:8.0
 ```
 
 ### 2. Backend
