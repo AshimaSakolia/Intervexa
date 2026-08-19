@@ -1,0 +1,141 @@
+generator client {
+  provider      = "prisma-client"
+  output        = "../generated/prisma"
+  moduleFormat  = "cjs"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String
+  createdAt DateTime @default(now())
+
+  interviews Interview[]
+  resumes    Resume[]
+}
+
+enum InterviewStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum InterviewType {
+  TECHNICAL
+  HR
+  BEHAVIORAL
+  PROJECT
+  SYSTEM_DESIGN
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+model Resume {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  fileName  String
+  rawText   String   @db.Text
+  analysis  String?  @db.Text
+  createdAt DateTime @default(now())
+
+  claims     ResumeClaim[]
+  interviews Interview[]
+}
+
+model ResumeClaim {
+  id         Int     @id @default(autoincrement())
+  resumeId   Int
+  resume     Resume  @relation(fields: [resumeId], references: [id])
+  text       String  @db.Text
+  category   String
+  confidence Int?
+  notes      String? @db.Text
+
+  questions Question[]
+}
+
+model Interview {
+  id            Int             @id @default(autoincrement())
+  userId        Int
+  user          User            @relation(fields: [userId], references: [id])
+  resumeId      Int?
+  resume        Resume?         @relation(fields: [resumeId], references: [id])
+  resumeText    String          @db.Text
+  targetRole    String
+  interviewType InterviewType   @default(TECHNICAL)
+  difficulty    Difficulty      @default(MEDIUM)
+  maxQuestions  Int             @default(5)
+  status        InterviewStatus @default(PENDING)
+  createdAt     DateTime        @default(now())
+  completedAt   DateTime?
+
+  questions    Question[]
+  report       Report?
+  learningPlan LearningPlan?
+}
+
+model Question {
+  id            Int          @id @default(autoincrement())
+  interviewId   Int
+  interview     Interview    @relation(fields: [interviewId], references: [id])
+  text          String       @db.Text
+  order         Int
+  topic         String?
+  difficulty    Difficulty?
+  targetsClaimId Int?
+  targetsClaim  ResumeClaim? @relation(fields: [targetsClaimId], references: [id])
+  askedBecause  String?      @db.Text
+  createdAt     DateTime     @default(now())
+
+  answer Answer?
+}
+
+model Answer {
+  id                     Int      @id @default(autoincrement())
+  questionId             Int      @unique
+  question               Question @relation(fields: [questionId], references: [id])
+  text                   String   @db.Text
+  score                  Int?
+  feedback               String?  @db.Text
+  technicalCorrectness   Int?
+  technicalDepth         Int?
+  problemSolving         Int?
+  communication          Int?
+  resumeUnderstanding    Int?
+  performanceLabel       String?
+  createdAt              DateTime @default(now())
+}
+
+model Report {
+  id                    Int       @id @default(autoincrement())
+  interviewId           Int       @unique
+  interview             Interview @relation(fields: [interviewId], references: [id])
+  overallScore          Int
+  summary               String    @db.Text
+  strengths             String    @db.Text
+  weaknesses            String    @db.Text
+  categoryScores        String?   @db.Text
+  missedConcepts        String?   @db.Text
+  resumeClaimConfidence String?   @db.Text
+  motivation            String?   @db.Text
+  createdAt             DateTime  @default(now())
+}
+
+model LearningPlan {
+  id                      Int       @id @default(autoincrement())
+  interviewId             Int       @unique
+  interview               Interview @relation(fields: [interviewId], references: [id])
+  topics                  String    @db.Text
+  recommendedNextInterview String   @db.Text
+  createdAt               DateTime  @default(now())
+}
