@@ -34,6 +34,8 @@ export interface AdvancedReportResult {
 }
 
 export interface ResumeAnalysis {
+  isResume: boolean;
+  notResumeReason: string | null;
   skills: string[];
   technologies: string[];
   projects: string[];
@@ -69,24 +71,41 @@ export class GeminiService {
   }
 
   async analyzeResume(resumeText: string): Promise<ResumeAnalysis> {
-    const prompt = `You are a resume analyst. Analyze the resume below and extract structured information.
+    const prompt = `You are a resume analyst. First determine whether the document below is actually a resume/CV (a document describing a person's work experience, education, skills, and projects for job applications). It is NOT a resume if it is, for example, an answer sheet, exam paper, assignment, invoice, article, or any other unrelated document.
 
-Resume:
+Document:
 """
 ${resumeText}
 """
 
-Identify:
+If it IS a resume, also identify:
 - skills: general skills (e.g. "Problem Solving", "System Design")
 - technologies: specific tools/languages/frameworks (e.g. "NestJS", "MySQL")
 - projects: named projects or products mentioned
 - experience: notable roles/responsibilities as short phrases
 - claims: the most important, specific, and checkable claims the candidate makes about what they built or did (e.g. "Built RabbitMQ-based asynchronous workflows for background job processing"). Include 5-8 claims. Each claim needs a category: one of "technical", "project", "experience", "leadership".
 
+If it is NOT a resume, leave skills/technologies/projects/experience/claims as empty arrays and set notResumeReason to a short explanation of what the document actually appears to be.
+
 Respond with ONLY JSON in this exact shape, no markdown:
-{"skills": ["string"], "technologies": ["string"], "projects": ["string"], "experience": ["string"], "claims": [{"text": "string", "category": "string"}]}`;
+{"isResume": boolean, "notResumeReason": "string or null", "skills": ["string"], "technologies": ["string"], "projects": ["string"], "experience": ["string"], "claims": [{"text": "string", "category": "string"}]}`;
 
     return this.generateJson<ResumeAnalysis>(prompt);
+  }
+
+  async validateTargetRole(
+    targetRole: string,
+  ): Promise<{ isValidRole: boolean; reason: string | null }> {
+    const prompt = `Determine whether the text below is a plausible job title or target role someone could interview for (e.g. "Senior Backend Engineer", "Product Manager", "Data Analyst"). Reject gibberish, random characters, or text that is clearly not a job role.
+
+Text: "${targetRole}"
+
+Respond with ONLY JSON in this exact shape, no markdown:
+{"isValidRole": boolean, "reason": "string or null, a short reason only when isValidRole is false"}`;
+
+    return this.generateJson<{ isValidRole: boolean; reason: string | null }>(
+      prompt,
+    );
   }
 
   async generateNextQuestion(context: {

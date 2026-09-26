@@ -4,6 +4,7 @@ export interface ApiUser {
   id: number;
   email: string;
   name: string;
+  hasSeenGuide: boolean;
 }
 
 export interface AuthResponse {
@@ -136,6 +137,16 @@ export interface SubmitAnswerResponse {
   isLastQuestion: boolean;
 }
 
+export const AUTH_EXPIRED_EVENT = "auth:expired";
+
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function request<T>(
   path: string,
   options: { method?: string; body?: unknown; token?: string | null; formData?: FormData } = {}
@@ -166,7 +177,10 @@ async function request<T>(
     } catch {
       // ignore parse error, use default message
     }
-    throw new Error(message);
+    if (res.status === 401 && token && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
+    }
+    throw new ApiError(message, res.status);
   }
 
   if (res.status === 204) {
@@ -238,6 +252,9 @@ export const api = {
 
   getResume: (token: string, id: number) => request<Resume>(`/resumes/${id}`, { token }),
 
+  deleteResume: (token: string, id: number) =>
+    request<void>(`/resumes/${id}`, { method: "DELETE", token }),
+
   createInterview: (
     token: string,
     params: {
@@ -264,4 +281,7 @@ export const api = {
 
   completeInterview: (token: string, interviewId: string | number) =>
     request<Report>(`/interviews/${interviewId}/complete`, { method: "POST", token }),
+
+  completeOnboarding: (token: string) =>
+    request<{ hasSeenGuide: boolean }>("/auth/onboarding-complete", { method: "PATCH", token }),
 };

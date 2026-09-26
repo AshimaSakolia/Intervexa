@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 export function Modal({
   open,
@@ -24,9 +25,9 @@ export function Modal({
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="absolute inset-0 animate-fade-in-up"
@@ -39,9 +40,10 @@ export function Modal({
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className="relative w-full max-w-lg rounded-lg border border-border bg-paper-raised shadow-lg animate-scale-in">
+      <div className="relative w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-lg border border-border bg-paper-raised shadow-lg animate-scale-in">
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -1,6 +1,9 @@
 import {
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseIntPipe,
   Post,
@@ -44,5 +47,14 @@ export class ResumeController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.resumeService.findOne(user.userId, id);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(
+    @CurrentUser() user: { userId: number },
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.resumeService.remove(user.userId, id);
   }
 }

@@ -5,6 +5,7 @@ import {
   IsNumberString,
   IsOptional,
   IsUrl,
+  Matches,
   validateSync,
 } from 'class-validator';
 
@@ -16,6 +17,10 @@ class EnvironmentVariables {
   JWT_SECRET: string;
 
   @IsOptional()
+  @Matches(/^\d+(ms|s|m|h|d|w|y)?$/, {
+    message:
+      'JWT_EXPIRES_IN must be a duration like "7d", "24h", or a number of seconds',
+  })
   JWT_EXPIRES_IN?: string;
 
   @IsNotEmpty({ message: 'GEMINI_API_KEY is required' })

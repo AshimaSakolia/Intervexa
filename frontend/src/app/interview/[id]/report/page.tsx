@@ -6,7 +6,7 @@ import { api, Interview } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { ReportView } from "@/components/interview/report-view";
 import { Skeleton } from "@/components/skeleton";
-import { BackLink } from "@/components/back-link";
+import { BackLink, BackLinkInline } from "@/components/back-link";
 
 export default function InterviewReportPage() {
   const params = useParams<{ id: string }>();
@@ -59,8 +59,9 @@ export default function InterviewReportPage() {
 
   return (
     <main className="flex-1 max-w-3xl w-full mx-auto px-6 py-12 flex flex-col gap-8">
+      <BackLink href="/interviews">All interviews</BackLink>
       <div className="flex flex-col gap-2">
-        <BackLink href="/interviews">All interviews</BackLink>
+        <BackLinkInline href="/interviews">All interviews</BackLinkInline>
         <h1 className="text-2xl font-semibold tracking-tight">{interview.targetRole}</h1>
         <p className="text-sm text-ink-faint font-mono">
           {interview.interviewType.replace("_", " ")} &middot; {interview.difficulty} &middot;{" "}

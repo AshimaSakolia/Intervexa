@@ -93,7 +93,7 @@ npm run start:dev       # http://localhost:4000
 cd frontend
 npm install
 cp .env.example .env.local
-npm run dev              # http://localhost:3000
+npm run dev              # http://localhost:3009
 ```
 
 ## API overview

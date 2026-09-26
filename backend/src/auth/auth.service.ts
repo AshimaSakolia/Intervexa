@@ -29,7 +29,12 @@ export class AuthService {
       data: { email: dto.email, password: hashedPassword, name: dto.name },
     });
 
-    return this.buildAuthResponse(user.id, user.email, user.name);
+    return this.buildAuthResponse(
+      user.id,
+      user.email,
+      user.name,
+      user.hasSeenGuide,
+    );
   }
 
   async login(dto: LoginDto) {
@@ -45,11 +50,29 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    return this.buildAuthResponse(user.id, user.email, user.name);
+    return this.buildAuthResponse(
+      user.id,
+      user.email,
+      user.name,
+      user.hasSeenGuide,
+    );
   }
 
-  private buildAuthResponse(userId: number, email: string, name: string) {
+  async completeOnboarding(userId: number) {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { hasSeenGuide: true },
+    });
+    return { hasSeenGuide: user.hasSeenGuide };
+  }
+
+  private buildAuthResponse(
+    userId: number,
+    email: string,
+    name: string,
+    hasSeenGuide: boolean,
+  ) {
     const accessToken = this.jwtService.sign({ sub: userId, email });
-    return { accessToken, user: { id: userId, email, name } };
+    return { accessToken, user: { id: userId, email, name, hasSeenGuide } };
   }
 }

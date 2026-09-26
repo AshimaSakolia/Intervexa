@@ -7,6 +7,8 @@ import { ThemeProvider } from "@/lib/theme-context";
 import { ToastProvider } from "@/lib/toast-context";
 import { SiteHeader } from "@/components/site-header";
 import { AccountMenu } from "@/components/account-menu";
+import { PageTransition } from "@/components/page-transition";
+import { AppSideRails } from "@/components/app-side-rails";
 
 const THEME_INIT_SCRIPT = `
 (function () {
@@ -52,7 +54,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <AuthProvider>
             <ToastProvider>
               <SiteHeader />
-              {children}
+              <AppSideRails />
+              <PageTransition>{children}</PageTransition>
               <AccountMenu />
             </ToastProvider>
           </AuthProvider>

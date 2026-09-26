@@ -7,11 +7,30 @@ import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { buttonClassName } from "@/components/button";
 import { Skeleton } from "@/components/skeleton";
-import { BackLink } from "@/components/back-link";
+import { BackLink, BackLinkInline } from "@/components/back-link";
+import { ConfirmModal } from "@/components/confirm-modal";
 
-function ResumeCard({ resume }: { resume: Resume }) {
+function ResumeCard({
+  resume,
+  onDelete,
+}: {
+  resume: Resume;
+  onDelete: (id: number) => Promise<void>;
+}) {
   const analysis = parseAnalysis(resume);
   const [expanded, setExpanded] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    setDeleting(true);
+    try {
+      await onDelete(resume.id);
+      setConfirmOpen(false);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <div className="rounded-lg border border-border bg-paper-raised p-5 flex flex-col gap-4 animate-fade-in-up">
@@ -22,12 +41,29 @@ function ResumeCard({ resume }: { resume: Resume }) {
             uploaded {new Date(resume.createdAt).toLocaleDateString()}
           </p>
         </div>
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="text-sm text-accent font-medium hover:underline shrink-0"
-        >
-          {expanded ? "Hide details" : "View details"}
-        </button>
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="text-sm text-accent font-medium hover:underline"
+          >
+            {expanded ? "Hide details" : "View details"}
+          </button>
+          <button
+            onClick={() => setConfirmOpen(true)}
+            aria-label="Delete resume"
+            className="text-ink-faint hover:text-bad transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path
+                d="M2.5 4h11M6 4V2.5h4V4M6.5 7v4M9.5 7v4M3.5 4l.7 8.5A1 1 0 0 0 5.2 13.5h5.6a1 1 0 0 0 1-0.9L12.5 4"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {expanded && analysis && (
@@ -113,6 +149,15 @@ function ResumeCard({ resume }: { resume: Resume }) {
           )}
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={handleConfirmDelete}
+        confirming={deleting}
+        title="Delete this resume?"
+        description={`"${resume.fileName}" will be permanently removed. Past interviews based on it will keep their existing results.`}
+      />
     </div>
   );
 }
@@ -157,14 +202,27 @@ export default function ResumePage() {
     }
   };
 
+  const handleDeleteResume = async (id: number) => {
+    if (!token) return;
+    try {
+      await api.deleteResume(token, id);
+      setResumes((prev) => prev.filter((r) => r.id !== id));
+      showToast("Resume deleted", "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to delete resume", "error");
+      throw err;
+    }
+  };
+
   if (loading || !token) {
     return null;
   }
 
   return (
     <main className="flex-1 max-w-3xl w-full mx-auto px-6 py-12 flex flex-col gap-8">
+      <BackLink href="/dashboard">Dashboard</BackLink>
       <div className="flex flex-col gap-2">
-        <BackLink href="/dashboard">Dashboard</BackLink>
+        <BackLinkInline href="/dashboard">Dashboard</BackLinkInline>
         <h1 className="text-2xl font-semibold tracking-tight">Resumes</h1>
         <p className="text-sm text-ink-soft">
           Upload a resume to generate interviews and verify your claims.
@@ -201,7 +259,7 @@ export default function ResumePage() {
           <p className="text-sm text-ink-soft">No resumes uploaded yet.</p>
         )}
         {resumes.map((resume) => (
-          <ResumeCard key={resume.id} resume={resume} />
+          <ResumeCard key={resume.id} resume={resume} onDelete={handleDeleteResume} />
         ))}
       </section>
     </main>

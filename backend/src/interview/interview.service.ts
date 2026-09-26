@@ -1,13 +1,28 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { GeminiService, ResumeAnalysis } from '../gemini/gemini.service';
+import {
+  DetailedEvaluationResult,
+  GeminiService,
+  ResumeAnalysis,
+} from '../gemini/gemini.service';
 import { CreateInterviewDto } from './dto/create-interview.dto';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002'
+  );
+}
+
+const VALID_DIFFICULTIES = new Set(['EASY', 'MEDIUM', 'HARD']);
 
 @Injectable()
 export class InterviewService {
@@ -32,6 +47,15 @@ export class InterviewService {
     if (!resumeText) {
       throw new BadRequestException(
         'Either resumeId or resumeText must be provided',
+      );
+    }
+
+    const roleValidation = await this.gemini.validateTargetRole(dto.targetRole);
+    if (!roleValidation.isValidRole) {
+      throw new BadRequestException(
+        roleValidation.reason
+          ? `"${dto.targetRole}" doesn't look like a valid target role: ${roleValidation.reason}`
+          : `"${dto.targetRole}" doesn't look like a valid target role.`,
       );
     }
 
@@ -106,20 +130,11 @@ export class InterviewService {
       claimText: question.targetsClaim?.text,
     });
 
-    const answer = await this.prisma.answer.create({
-      data: {
-        questionId: dto.questionId,
-        text: dto.text,
-        score: evaluation.overallScore,
-        feedback: evaluation.feedback,
-        technicalCorrectness: evaluation.technicalCorrectness,
-        technicalDepth: evaluation.technicalDepth,
-        problemSolving: evaluation.problemSolving,
-        communication: evaluation.communication,
-        resumeUnderstanding: evaluation.resumeUnderstanding,
-        performanceLabel: evaluation.performanceLabel,
-      },
-    });
+    const answer = await this.createAnswer(
+      dto.questionId,
+      dto.text,
+      evaluation,
+    );
 
     if (question.targetsClaimId) {
       await this.prisma.resumeClaim.update({
@@ -211,27 +226,54 @@ export class InterviewService {
       missedConcepts: reportMissedConcepts ?? [],
     });
 
-    await this.prisma.learningPlan.upsert({
-      where: { interviewId },
-      create: {
-        interviewId,
-        topics: JSON.stringify(learningPlanResult.topics),
-        recommendedNextInterview: learningPlanResult.recommendedNextInterview,
-      },
-      update: {
-        topics: JSON.stringify(learningPlanResult.topics),
-        recommendedNextInterview: learningPlanResult.recommendedNextInterview,
-      },
-    });
-
-    if (interview.status !== 'COMPLETED') {
-      await this.prisma.interview.update({
+    await this.prisma.$transaction([
+      this.prisma.learningPlan.upsert({
+        where: { interviewId },
+        create: {
+          interviewId,
+          topics: JSON.stringify(learningPlanResult.topics),
+          recommendedNextInterview: learningPlanResult.recommendedNextInterview,
+        },
+        update: {
+          topics: JSON.stringify(learningPlanResult.topics),
+          recommendedNextInterview: learningPlanResult.recommendedNextInterview,
+        },
+      }),
+      this.prisma.interview.update({
         where: { id: interviewId },
         data: { status: 'COMPLETED', completedAt: new Date() },
-      });
-    }
+      }),
+    ]);
 
     return report;
+  }
+
+  private async createAnswer(
+    questionId: number,
+    text: string,
+    evaluation: DetailedEvaluationResult,
+  ) {
+    try {
+      return await this.prisma.answer.create({
+        data: {
+          questionId,
+          text,
+          score: evaluation.overallScore,
+          feedback: evaluation.feedback,
+          technicalCorrectness: evaluation.technicalCorrectness,
+          technicalDepth: evaluation.technicalDepth,
+          problemSolving: evaluation.problemSolving,
+          communication: evaluation.communication,
+          resumeUnderstanding: evaluation.resumeUnderstanding,
+          performanceLabel: evaluation.performanceLabel,
+        },
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new ConflictException('This question has already been answered');
+      }
+      throw error;
+    }
   }
 
   private async generateAndStoreNextQuestion(interviewId: number) {
@@ -286,16 +328,29 @@ export class InterviewService {
         )
       : undefined;
 
-    return this.prisma.question.create({
-      data: {
-        interviewId,
-        text: generated.question,
-        order: nextQuestionNumber,
-        topic: generated.topic,
-        difficulty: generated.difficulty,
-        askedBecause: generated.askedBecause,
-        targetsClaimId: targetsClaim?.id,
-      },
-    });
+    const difficulty = VALID_DIFFICULTIES.has(generated.difficulty)
+      ? generated.difficulty
+      : interview.difficulty;
+
+    try {
+      return await this.prisma.question.create({
+        data: {
+          interviewId,
+          text: generated.question,
+          order: nextQuestionNumber,
+          topic: generated.topic,
+          difficulty,
+          askedBecause: generated.askedBecause,
+          targetsClaimId: targetsClaim?.id,
+        },
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new ConflictException(
+          'The next question is already being generated for this interview',
+        );
+      }
+      throw error;
+    }
   }
 }

@@ -1,6 +1,8 @@
 "use client";
 
-import { createContext, useContext, useSyncExternalStore, ReactNode } from "react";
+import { createContext, useContext, useEffect, useSyncExternalStore, ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { AUTH_EXPIRED_EVENT } from "./api";
 import type { ApiUser } from "./api";
 
 interface AuthContextValue {
@@ -9,6 +11,7 @@ interface AuthContextValue {
   loading: boolean;
   login: (token: string, user: ApiUser) => void;
   logout: () => void;
+  updateUser: (patch: Partial<ApiUser>) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -41,6 +44,7 @@ function getServerMountedSnapshot(): boolean {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const token = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const storedUser = useSyncExternalStore(
     subscribe,
@@ -63,8 +67,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     notify();
   };
 
+  const updateUser = (patch: Partial<ApiUser>) => {
+    const current = localStorage.getItem("user");
+    if (!current) return;
+    const merged = { ...JSON.parse(current), ...patch };
+    localStorage.setItem("user", JSON.stringify(merged));
+    notify();
+  };
+
+  useEffect(() => {
+    const handleExpired = () => {
+      logout();
+      router.push("/login");
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpired);
+  }, [router]);
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -21,10 +21,10 @@ export function SiteHeader() {
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
 
   return (
-    <header className="border-b border-border px-6 py-4 flex items-center justify-between bg-paper-raised">
+    <header className="px-6 py-4 flex items-center justify-between border-b border-border bg-paper-raised relative z-20">
       <div className="flex items-center gap-6">
         <Link href={token ? "/dashboard" : "/"} className="flex items-baseline gap-0.5 font-semibold text-lg tracking-tight">
-          <span>Interview</span>
+          <span className="text-ink">Interview</span>
           <span className="font-mono text-accent">IQ</span>
         </Link>
         <nav className="hidden sm:flex items-center gap-5">
@@ -34,8 +34,10 @@ export function SiteHeader() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`text-sm transition-colors ${
-                  isActive ? "text-ink font-medium" : "text-ink-soft hover:text-ink"
+                className={`relative text-sm py-1 transition-colors after:absolute after:left-0 after:-bottom-[17px] after:h-[2px] after:w-full after:origin-left after:bg-accent after:transition-transform after:duration-200 after:ease-out-snap ${
+                  isActive
+                    ? "text-ink font-medium after:scale-x-100"
+                    : "text-ink-soft hover:text-ink after:scale-x-0"
                 }`}
               >
                 {link.label}
@@ -77,8 +79,23 @@ export function SiteHeader() {
             </svg>
           )}
         </button>
-        {token && user && (
+        {token && user ? (
           <span className="hidden sm:inline text-sm text-ink-soft">{user.name}</span>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Link
+              href="/login"
+              className="text-sm font-medium text-ink-soft hover:text-ink transition-colors px-2"
+            >
+              Log in
+            </Link>
+            <Link
+              href="/register"
+              className="btn-sheen rounded-md bg-accent text-accent-ink px-4 py-1.5 text-sm font-medium transition-all duration-200 ease-out-snap hover:opacity-90 hover:-translate-y-0.5 hover:shadow-md hover:shadow-accent/30 active:scale-[0.98]"
+            >
+              Sign up
+            </Link>
+          </div>
         )}
       </div>
       <HowItWorksModal open={howItWorksOpen} onClose={() => setHowItWorksOpen(false)} />

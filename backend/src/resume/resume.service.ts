@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GeminiService } from '../gemini/gemini.service';
 
 const MIN_RESUME_TEXT_LENGTH = 50;
+const PDF_MAGIC_BYTES = Buffer.from('%PDF-', 'ascii');
 
 @Injectable()
 export class ResumeService {
@@ -24,6 +25,11 @@ export class ResumeService {
     if (file.mimetype !== 'application/pdf') {
       throw new BadRequestException('Only PDF files are supported');
     }
+    if (!file.buffer.subarray(0, 5).equals(PDF_MAGIC_BYTES)) {
+      throw new BadRequestException(
+        'The uploaded file is not a valid PDF file',
+      );
+    }
 
     const rawText = await this.extractText(file.buffer);
     if (rawText.trim().length < MIN_RESUME_TEXT_LENGTH) {
@@ -33,6 +39,14 @@ export class ResumeService {
     }
 
     const analysis = await this.gemini.analyzeResume(rawText);
+
+    if (!analysis.isResume) {
+      throw new BadRequestException(
+        analysis.notResumeReason
+          ? `This doesn't look like a resume: ${analysis.notResumeReason}`
+          : "This doesn't look like a resume. Please upload a resume/CV PDF.",
+      );
+    }
 
     const resume = await this.prisma.resume.create({
       data: {
@@ -74,6 +88,28 @@ export class ResumeService {
     if (resume.userId !== userId) throw new ForbiddenException();
 
     return resume;
+  }
+
+  async remove(userId: number, resumeId: number) {
+    const resume = await this.prisma.resume.findUnique({
+      where: { id: resumeId },
+    });
+
+    if (!resume) throw new NotFoundException('Resume not found');
+    if (resume.userId !== userId) throw new ForbiddenException();
+
+    await this.prisma.$transaction([
+      this.prisma.interview.updateMany({
+        where: { resumeId },
+        data: { resumeId: null },
+      }),
+      this.prisma.question.updateMany({
+        where: { targetsClaim: { resumeId } },
+        data: { targetsClaimId: null },
+      }),
+      this.prisma.resumeClaim.deleteMany({ where: { resumeId } }),
+      this.prisma.resume.delete({ where: { id: resumeId } }),
+    ]);
   }
 
   private async extractText(buffer: Buffer): Promise<string> {

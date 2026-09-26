@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { api, Interview, InterviewType, parseCategoryScores } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { Skeleton } from "@/components/skeleton";
-import { BackLink } from "@/components/back-link";
+import { BackLink, BackLinkInline } from "@/components/back-link";
 
 const INTERVIEW_TYPES: InterviewType[] = ["TECHNICAL", "HR", "BEHAVIORAL", "PROJECT", "SYSTEM_DESIGN"];
 const STATUSES = ["PENDING", "IN_PROGRESS", "COMPLETED"] as const;
@@ -65,8 +65,9 @@ export default function InterviewsPage() {
 
   return (
     <main className="flex-1 max-w-3xl w-full mx-auto px-6 py-12 flex flex-col gap-6">
+      <BackLink href="/dashboard">Dashboard</BackLink>
       <div className="flex flex-col gap-2">
-        <BackLink href="/dashboard">Dashboard</BackLink>
+        <BackLinkInline href="/dashboard">Dashboard</BackLinkInline>
         <h1 className="text-2xl font-semibold tracking-tight">All interviews</h1>
         <p className="text-sm text-ink-soft">{interviews.length} total</p>
       </div>
@@ -75,7 +76,7 @@ export default function InterviewsPage() {
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value as InterviewType | "ALL")}
-          className="rounded-md border border-border bg-paper text-ink px-3 py-1.5 text-sm outline-none focus:border-accent transition-colors"
+          className="rounded-md border border-border bg-paper text-ink px-3 py-1.5 text-sm outline-none transition-all duration-200 ease-out-snap hover:border-ink-faint focus:border-accent focus:shadow-sm focus:shadow-accent/10"
         >
           <option value="ALL">All types</option>
           {INTERVIEW_TYPES.map((t) => (
@@ -87,7 +88,7 @@ export default function InterviewsPage() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as (typeof STATUSES)[number] | "ALL")}
-          className="rounded-md border border-border bg-paper text-ink px-3 py-1.5 text-sm outline-none focus:border-accent transition-colors"
+          className="rounded-md border border-border bg-paper text-ink px-3 py-1.5 text-sm outline-none transition-all duration-200 ease-out-snap hover:border-ink-faint focus:border-accent focus:shadow-sm focus:shadow-accent/10"
         >
           <option value="ALL">All statuses</option>
           {STATUSES.map((s) => (

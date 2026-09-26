@@ -1,5 +1,5 @@
 export function Skeleton({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded-md bg-border ${className}`} />;
+  return <div className={`skeleton-shimmer rounded-md ${className}`} />;
 }
 
 export function InterviewRowSkeleton() {

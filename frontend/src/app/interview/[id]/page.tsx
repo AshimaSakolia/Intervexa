@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/button";
 import { Skeleton } from "@/components/skeleton";
 import { Spinner } from "@/components/spinner";
-import { BackLink } from "@/components/back-link";
+import { BackLink, BackLinkInline } from "@/components/back-link";
 
 const PERFORMANCE_STYLES: Record<string, string> = {
   STRONG: "bg-good-bg text-good",
@@ -68,12 +68,17 @@ function ActiveQuestionForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmed = text.trim();
+    if (!trimmed) {
+      setError("Enter an answer before submitting");
+      return;
+    }
     setError(null);
     setSubmitting(true);
     setStage("evaluating");
     const stageTimer = setTimeout(() => setStage("adapting"), 1800);
     try {
-      const result = await api.submitAnswer(token, interviewId, question.id, text);
+      const result = await api.submitAnswer(token, interviewId, question.id, trimmed);
       onSubmitted(result.answer, result.nextQuestion);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit answer");
@@ -102,6 +107,7 @@ function ActiveQuestionForm({
         <textarea
           required
           rows={6}
+          maxLength={10_000}
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Type your answer…"
@@ -222,8 +228,9 @@ export default function InterviewPage() {
 
   return (
     <main className="flex-1 max-w-3xl w-full mx-auto px-6 py-12 flex flex-col gap-8">
+      <BackLink href="/dashboard">Dashboard</BackLink>
       <div className="flex flex-col gap-2">
-        <BackLink href="/dashboard">Dashboard</BackLink>
+        <BackLinkInline href="/dashboard">Dashboard</BackLinkInline>
         <h1 className="text-2xl font-semibold tracking-tight">{interview.targetRole}</h1>
         <p className="text-sm text-ink-faint font-mono">
           {interview.interviewType.replace("_", " ")} &middot; {interview.difficulty} &middot;{" "}

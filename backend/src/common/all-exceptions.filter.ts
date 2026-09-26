@@ -34,10 +34,22 @@ export class AllExceptionsFilter implements ExceptionFilter {
       );
     }
 
-    const body =
-      typeof message === 'string' || Array.isArray(message)
-        ? { statusCode: status, message }
-        : { statusCode: status, ...message };
+    let body: { statusCode: number; message: string | string[] };
+    if (typeof message === 'string' || Array.isArray(message)) {
+      body = { statusCode: status, message };
+    } else if (
+      message &&
+      typeof message === 'object' &&
+      'message' in message &&
+      (typeof message.message === 'string' || Array.isArray(message.message))
+    ) {
+      body = { statusCode: status, message: message.message };
+    } else {
+      body = {
+        statusCode: status,
+        message: 'Something went wrong. Please try again.',
+      };
+    }
 
     response.status(status).json(body);
   }

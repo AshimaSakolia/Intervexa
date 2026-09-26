@@ -5,15 +5,16 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String
-  name      String
-  createdAt DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  password     String
+  name         String
+  hasSeenGuide Boolean  @default(false)
+  createdAt    DateTime @default(now())
 
   interviews Interview[]
   resumes    Resume[]
@@ -98,6 +99,8 @@ model Question {
   createdAt     DateTime     @default(now())
 
   answer Answer?
+
+  @@unique([interviewId, order])
 }
 
 model Answer {

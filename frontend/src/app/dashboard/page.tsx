@@ -15,6 +15,8 @@ import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { InterviewRowSkeleton } from "@/components/skeleton";
 import { Button } from "@/components/button";
+import { StreakBadge } from "@/components/streak-badge";
+import { HowItWorksModal } from "@/components/how-it-works-modal";
 
 const INTERVIEW_TYPES: InterviewType[] = ["TECHNICAL", "HR", "BEHAVIORAL", "PROJECT", "SYSTEM_DESIGN"];
 const DIFFICULTIES: Difficulty[] = ["EASY", "MEDIUM", "HARD"];
@@ -40,8 +42,9 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, token, loading } = useAuth();
+  const { user, token, loading, updateUser } = useAuth();
   const { showToast } = useToast();
+  const [guideOpen, setGuideOpen] = useState(false);
   const [resumes, setResumes] = useState<Resume[]>([]);
   const [selectedResumeId, setSelectedResumeId] = useState<number | null>(null);
   const [targetRole, setTargetRole] = useState("");
@@ -59,6 +62,20 @@ export default function DashboardPage() {
       router.push("/login");
     }
   }, [loading, token, router]);
+
+  useEffect(() => {
+    if (user && !user.hasSeenGuide) {
+      setGuideOpen(true);
+    }
+  }, [user]);
+
+  const handleGuideClose = () => {
+    setGuideOpen(false);
+    updateUser({ hasSeenGuide: true });
+    if (token) {
+      api.completeOnboarding(token).catch(() => {});
+    }
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -118,15 +135,16 @@ export default function DashboardPage() {
 
   return (
     <main className="flex-1 max-w-3xl w-full mx-auto px-6 py-12 flex flex-col gap-10">
-      <div>
+      <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold tracking-tight">
           Welcome{user ? `, ${user.name}` : ""}
         </h1>
+        {!listLoading && <StreakBadge interviewDates={interviews.map((i) => i.createdAt)} />}
       </div>
 
       {!listLoading && interviews.length > 0 && (
         <section className="grid grid-cols-3 divide-x divide-border rounded-lg border border-border bg-paper-raised overflow-hidden animate-fade-in-up">
-          <div className="p-5 flex flex-col gap-1">
+          <div className="p-5 flex flex-col gap-1 transition-colors hover:bg-paper">
             <span className="text-xs font-mono uppercase tracking-wide text-ink-faint">
               Interviews
             </span>
@@ -134,7 +152,7 @@ export default function DashboardPage() {
               {interviews.length}
             </span>
           </div>
-          <div className="p-5 flex flex-col gap-1">
+          <div className="p-5 flex flex-col gap-1 transition-colors hover:bg-paper">
             <span className="text-xs font-mono uppercase tracking-wide text-ink-faint">
               Completed
             </span>
@@ -142,7 +160,7 @@ export default function DashboardPage() {
               {completedInterviews.length}
             </span>
           </div>
-          <div className="p-5 flex flex-col gap-1">
+          <div className="p-5 flex flex-col gap-1 transition-colors hover:bg-paper">
             <span className="text-xs font-mono uppercase tracking-wide text-ink-faint">
               Avg. score
             </span>
@@ -153,7 +171,7 @@ export default function DashboardPage() {
         </section>
       )}
 
-      <section className="rounded-lg border border-border bg-paper-raised p-6 flex flex-col gap-5">
+      <section id="start-interview" className="rounded-lg border border-border bg-paper-raised p-6 flex flex-col gap-5 scroll-mt-6">
         <div>
           <h2 className="text-base font-semibold">Start new interview</h2>
           <p className="text-sm text-ink-soft mt-0.5">
@@ -358,6 +376,7 @@ export default function DashboardPage() {
           })}
         </ul>
       </section>
+      <HowItWorksModal open={guideOpen} onClose={handleGuideClose} />
     </main>
   );
 }
