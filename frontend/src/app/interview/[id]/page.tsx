@@ -54,11 +54,13 @@ function ActiveQuestionForm({
   question,
   token,
   interviewId,
+  isLast,
   onSubmitted,
 }: {
   question: Question;
   token: string;
   interviewId: string;
+  isLast: boolean;
   onSubmitted: (
     answer: Question["answer"],
     nextQuestion: Question | null,
@@ -81,14 +83,14 @@ function ActiveQuestionForm({
     setError(null);
     setSubmitting(true);
     setStage("evaluating");
-    const stageTimer = setTimeout(() => setStage("adapting"), 1800);
+    const stageTimer = isLast ? undefined : setTimeout(() => setStage("adapting"), 1800);
     try {
       const result = await api.submitAnswer(token, interviewId, question.id, trimmed);
       onSubmitted(result.answer, result.nextQuestion, Boolean(result.nextQuestionFailed));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit answer");
     } finally {
-      clearTimeout(stageTimer);
+      if (stageTimer) clearTimeout(stageTimer);
       setSubmitting(false);
     }
   };
@@ -302,6 +304,7 @@ export default function InterviewPage() {
             question={activeQuestion}
             token={token}
             interviewId={params.id}
+            isLast={activeQuestion.order >= interview.maxQuestions}
             onSubmitted={handleAnswerSubmitted}
           />
         </section>
