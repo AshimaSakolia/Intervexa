@@ -31,7 +31,7 @@ export default function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      const res = await api.login(email, password);
+      const res = await api.login(email.trim(), password);
       login(res.accessToken, res.user);
       clearToasts();
       showToast(`Welcome back, ${res.user.name}`, "success");

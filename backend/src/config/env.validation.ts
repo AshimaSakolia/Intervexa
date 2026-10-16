@@ -38,6 +38,12 @@ class EnvironmentVariables {
   FRONTEND_URL: string;
 
   @IsOptional()
+  @Matches(/^(true|false|\d+)$/, {
+    message: 'TRUST_PROXY must be "true", "false" or a number of proxy hops',
+  })
+  TRUST_PROXY?: string;
+
+  @IsOptional()
   @IsIn(['development', 'production', 'test'])
   NODE_ENV?: string;
 }

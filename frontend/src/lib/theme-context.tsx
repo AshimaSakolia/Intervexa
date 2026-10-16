@@ -22,12 +22,21 @@ function applyTheme(theme: Theme) {
   const root = document.documentElement;
   root.classList.remove("light", "dark");
   root.classList.add(theme);
-  localStorage.setItem("theme", theme);
+  try {
+    localStorage.setItem("theme", theme);
+  } catch {
+    // storage unavailable; theme applies for this session only
+  }
   listeners.forEach((callback) => callback());
 }
 
 function getSnapshot(): Theme {
-  const stored = localStorage.getItem("theme");
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem("theme");
+  } catch {
+    // storage unavailable
+  }
   if (stored === "light" || stored === "dark") return stored;
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }

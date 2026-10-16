@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GeminiService } from '../gemini/gemini.service';
 
 const MIN_RESUME_TEXT_LENGTH = 50;
+const MAX_RESUME_TEXT_LENGTH = 30_000;
 const PDF_MAGIC_BYTES = Buffer.from('%PDF-', 'ascii');
 
 @Injectable()
@@ -31,7 +32,11 @@ export class ResumeService {
       );
     }
 
-    const rawText = await this.extractText(file.buffer);
+    // Postgres rejects NUL characters, which some PDFs emit; also bound the
+    // size of what we store and send to the AI.
+    const rawText = (await this.extractText(file.buffer))
+      .replaceAll('\u0000', '')
+      .slice(0, MAX_RESUME_TEXT_LENGTH);
     if (rawText.trim().length < MIN_RESUME_TEXT_LENGTH) {
       throw new BadRequestException(
         'Could not extract enough text from the PDF. Please upload a text-based resume PDF.',
@@ -51,7 +56,7 @@ export class ResumeService {
     const resume = await this.prisma.resume.create({
       data: {
         userId,
-        fileName: file.originalname,
+        fileName: file.originalname.slice(0, 255),
         rawText,
         analysis: JSON.stringify(analysis),
       },

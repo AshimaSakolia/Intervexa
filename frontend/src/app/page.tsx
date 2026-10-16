@@ -12,8 +12,8 @@ const SAMPLE_CATEGORIES = [
 ];
 
 export default function Home() {
-  const { user, loading } = useAuth();
-  const ctaHref = !loading && user ? "/dashboard" : "/register";
+  const { token, loading } = useAuth();
+  const ctaHref = !loading && token ? "/dashboard" : "/register";
   const [barsFilled, setBarsFilled] = useState(false);
 
   useEffect(() => {

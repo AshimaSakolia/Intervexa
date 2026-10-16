@@ -45,11 +45,21 @@ export default function InterviewsPage() {
 
   useEffect(() => {
     if (!token) return;
+    let cancelled = false;
     api
       .getInterviews(token)
-      .then(setInterviews)
-      .catch((err) => setListError(err instanceof Error ? err.message : "Failed to load interviews"))
-      .finally(() => setListLoading(false));
+      .then((data) => {
+        if (!cancelled) setInterviews(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setListError(err instanceof Error ? err.message : "Failed to load interviews");
+      })
+      .finally(() => {
+        if (!cancelled) setListLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
   const filtered = useMemo(() => {

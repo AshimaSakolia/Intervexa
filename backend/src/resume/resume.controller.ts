@@ -5,7 +5,6 @@ import {
   HttpCode,
   HttpStatus,
   Param,
-  ParseIntPipe,
   Post,
   UploadedFile,
   UseGuards,
@@ -14,6 +13,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ParseIdPipe } from '../common/parse-id.pipe';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ResumeService } from './resume.service';
 
@@ -44,7 +44,7 @@ export class ResumeController {
   @Get(':id')
   findOne(
     @CurrentUser() user: { userId: number },
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseIdPipe) id: number,
   ) {
     return this.resumeService.findOne(user.userId, id);
   }
@@ -53,7 +53,7 @@ export class ResumeController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(
     @CurrentUser() user: { userId: number },
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseIdPipe) id: number,
   ) {
     return this.resumeService.remove(user.userId, id);
   }

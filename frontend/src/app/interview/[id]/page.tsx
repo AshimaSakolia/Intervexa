@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api, Interview, Question } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -41,7 +41,7 @@ function AnsweredQuestionCard({ question, index }: { question: Question; index: 
       )}
       <div className="flex flex-col gap-2 rounded-md bg-paper p-3 border border-border">
         <p className="text-sm whitespace-pre-wrap">{answer.text}</p>
-        {answer.score !== null && (
+        {answer.score != null && Number.isFinite(answer.score) && (
           <p className="text-sm font-semibold font-mono tabular-nums">Score: {answer.score}/100</p>
         )}
         {answer.feedback && <p className="text-sm text-ink-soft">{answer.feedback}</p>}
@@ -59,7 +59,11 @@ function ActiveQuestionForm({
   question: Question;
   token: string;
   interviewId: string;
-  onSubmitted: (answer: Question["answer"], nextQuestion: Question | null) => void;
+  onSubmitted: (
+    answer: Question["answer"],
+    nextQuestion: Question | null,
+    nextQuestionFailed: boolean
+  ) => void;
 }) {
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -68,6 +72,7 @@ function ActiveQuestionForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     const trimmed = text.trim();
     if (!trimmed) {
       setError("Enter an answer before submitting");
@@ -79,7 +84,7 @@ function ActiveQuestionForm({
     const stageTimer = setTimeout(() => setStage("adapting"), 1800);
     try {
       const result = await api.submitAnswer(token, interviewId, question.id, trimmed);
-      onSubmitted(result.answer, result.nextQuestion);
+      onSubmitted(result.answer, result.nextQuestion, Boolean(result.nextQuestionFailed));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit answer");
     } finally {
@@ -147,44 +152,71 @@ export default function InterviewPage() {
   const [completing, setCompleting] = useState(false);
   const [completeError, setCompleteError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
+  const [generatingNext, setGeneratingNext] = useState(false);
+  const [nextError, setNextError] = useState<string | null>(null);
+
+  useEffect(() => {
     if (!token) return;
+    let cancelled = false;
     api
       .getInterview(token, params.id)
       .then((data) => {
+        if (cancelled) return;
         if (data.report) {
           router.replace(`/interview/${params.id}/report`);
           return;
         }
         setInterview(data);
       })
-      .catch((err) => setFetchError(err instanceof Error ? err.message : "Failed to load interview"));
+      .catch((err) => {
+        if (!cancelled) setFetchError(err instanceof Error ? err.message : "Failed to load interview");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [token, params.id, router]);
 
   useEffect(() => {
     if (!loading && !token) {
-      router.push("/login");
+      router.replace("/login");
     }
   }, [loading, token, router]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
   const handleAnswerSubmitted = (
     answer: Question["answer"],
-    nextQuestion: Question | null
+    nextQuestion: Question | null,
+    nextQuestionFailed: boolean
   ) => {
+    if (!answer) return;
+    setNextError(nextQuestionFailed ? "We couldn't generate your next question. Please try again." : null);
     setInterview((prev) => {
       if (!prev) return prev;
       const updatedQuestions = prev.questions.map((q) =>
-        q.id === answer?.questionId ? { ...q, answer } : q
+        q.id === answer.questionId ? { ...q, answer } : q
       );
       return {
         ...prev,
         questions: nextQuestion ? [...updatedQuestions, nextQuestion] : updatedQuestions,
       };
     });
+  };
+
+  const handleGenerateNext = async () => {
+    if (!token || generatingNext) return;
+    setNextError(null);
+    setGeneratingNext(true);
+    try {
+      const question = await api.nextQuestion(token, params.id);
+      setInterview((prev) =>
+        prev && !prev.questions.some((q) => q.id === question.id)
+          ? { ...prev, questions: [...prev.questions, question] }
+          : prev
+      );
+    } catch (err) {
+      setNextError(err instanceof Error ? err.message : "Failed to generate the next question");
+    } finally {
+      setGeneratingNext(false);
+    }
   };
 
   const handleComplete = async () => {
@@ -222,9 +254,10 @@ export default function InterviewPage() {
     );
   }
 
-  const sortedQuestions = [...interview.questions].sort((a, b) => a.order - b.order);
+  const sortedQuestions = [...(interview.questions ?? [])].sort((a, b) => a.order - b.order);
   const answeredQuestions = sortedQuestions.filter((q) => q.answer);
   const activeQuestion = sortedQuestions.find((q) => !q.answer);
+  const needsNextQuestion = !activeQuestion && answeredQuestions.length < interview.maxQuestions;
 
   return (
     <main className="flex-1 max-w-3xl w-full mx-auto px-6 py-12 flex flex-col gap-8">
@@ -233,7 +266,7 @@ export default function InterviewPage() {
         <BackLinkInline href="/dashboard">Dashboard</BackLinkInline>
         <h1 className="text-2xl font-semibold tracking-tight">{interview.targetRole}</h1>
         <p className="text-sm text-ink-faint font-mono">
-          {interview.interviewType.replace("_", " ")} &middot; {interview.difficulty} &middot;{" "}
+          {interview.interviewType.replaceAll("_", " ")} &middot; {interview.difficulty} &middot;{" "}
           {new Date(interview.createdAt).toLocaleString()}
         </p>
         <div className="flex items-center gap-2 pt-1">
@@ -272,6 +305,34 @@ export default function InterviewPage() {
             onSubmitted={handleAnswerSubmitted}
           />
         </section>
+      ) : needsNextQuestion ? (
+        <div className="flex flex-col gap-2 animate-fade-in-up">
+          {nextError && (
+            <p className="text-sm text-bad rounded-md bg-bad-bg px-3 py-2 inline-block animate-fade-in-up">
+              {nextError}
+            </p>
+          )}
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button onClick={handleGenerateNext} disabled={generatingNext} className="self-start">
+              {generatingNext ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner light />
+                  Generating question…
+                </span>
+              ) : (
+                "Get next question"
+              )}
+            </Button>
+            {answeredQuestions.length > 0 && (
+              <Button onClick={handleComplete} disabled={completing || generatingNext} className="self-start">
+                {completing ? "Generating report…" : "Finish now & get report"}
+              </Button>
+            )}
+          </div>
+          {completeError && (
+            <p className="text-sm text-bad rounded-md bg-bad-bg px-3 py-2 inline-block">{completeError}</p>
+          )}
+        </div>
       ) : (
         <div className="flex flex-col gap-2 animate-fade-in-up">
           {completeError && (

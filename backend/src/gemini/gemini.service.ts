@@ -56,6 +56,41 @@ export interface LearningPlanResult {
   recommendedNextInterview: string;
 }
 
+const PERFORMANCE_LABELS = new Set([
+  'STRONG',
+  'WEAK',
+  'INCORRECT',
+  'INTERESTING',
+  'AVERAGE',
+]);
+const DIFFICULTIES = new Set(['EASY', 'MEDIUM', 'HARD']);
+
+/** Model output is untrusted: coerce to an integer in 0-100. */
+function toScore(value: unknown, fallback = 0): number {
+  const n = typeof value === 'string' ? Number(value) : value;
+  if (typeof n !== 'number' || !Number.isFinite(n)) return fallback;
+  return Math.min(100, Math.max(0, Math.round(n)));
+}
+
+function toText(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value.trim() || fallback : fallback;
+}
+
+function toStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value
+        .filter((v): v is string => typeof v === 'string')
+        .map((v) => v.trim())
+        .filter(Boolean)
+    : [];
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 const RETRYABLE_STATUS_CODES = new Set([429, 503]);
 const MAX_RETRIES = 3;
 const BASE_RETRY_DELAY_MS = 1000;
@@ -90,7 +125,26 @@ If it is NOT a resume, leave skills/technologies/projects/experience/claims as e
 Respond with ONLY JSON in this exact shape, no markdown:
 {"isResume": boolean, "notResumeReason": "string or null", "skills": ["string"], "technologies": ["string"], "projects": ["string"], "experience": ["string"], "claims": [{"text": "string", "category": "string"}]}`;
 
-    return this.generateJson<ResumeAnalysis>(prompt);
+    const raw = asObject(await this.generateJson<unknown>(prompt));
+    const isResume = raw.isResume === true;
+    const claims = Array.isArray(raw.claims)
+      ? raw.claims
+          .map((c) => asObject(c))
+          .filter((c) => toText(c.text))
+          .map((c) => ({
+            text: toText(c.text),
+            category: toText(c.category, 'technical'),
+          }))
+      : [];
+    return {
+      isResume,
+      notResumeReason: toText(raw.notResumeReason) || null,
+      skills: toStringArray(raw.skills),
+      technologies: toStringArray(raw.technologies),
+      projects: toStringArray(raw.projects),
+      experience: toStringArray(raw.experience),
+      claims: isResume ? claims : [],
+    };
   }
 
   async validateTargetRole(
@@ -103,9 +157,11 @@ Text: "${targetRole}"
 Respond with ONLY JSON in this exact shape, no markdown:
 {"isValidRole": boolean, "reason": "string or null, a short reason only when isValidRole is false"}`;
 
-    return this.generateJson<{ isValidRole: boolean; reason: string | null }>(
-      prompt,
-    );
+    const raw = asObject(await this.generateJson<unknown>(prompt));
+    return {
+      isValidRole: raw.isValidRole === true,
+      reason: toText(raw.reason) || null,
+    };
   }
 
   async generateNextQuestion(context: {
@@ -179,7 +235,24 @@ Rules:
 Respond with ONLY JSON in this exact shape, no markdown:
 {"question": "string", "topic": "string", "difficulty": "EASY"|"MEDIUM"|"HARD", "askedBecause": "string (1 sentence explaining why this question was chosen given the adaptive instruction)", "targetsClaimText": "string (optional)"}`;
 
-    return this.generateJson<NextQuestionResult>(prompt);
+    const raw = asObject(await this.generateJson<unknown>(prompt));
+    const question = toText(raw.question);
+    if (!question) {
+      this.logger.error('Gemini returned a next question without any text');
+      throw new ServiceUnavailableException(
+        'The AI service returned an unusable response. Please try again.',
+      );
+    }
+    const difficulty = toText(raw.difficulty).toUpperCase();
+    return {
+      question,
+      topic: toText(raw.topic, context.targetRole),
+      difficulty: (DIFFICULTIES.has(difficulty)
+        ? difficulty
+        : context.difficulty) as NextQuestionResult['difficulty'],
+      askedBecause: toText(raw.askedBecause),
+      targetsClaimText: toText(raw.targetsClaimText) || undefined,
+    };
   }
 
   async evaluateAnswerDetailed(context: {
@@ -219,7 +292,38 @@ Finally, classify the answer's performanceLabel as exactly one of:
 Respond with ONLY JSON in this exact shape, no markdown:
 {"technicalCorrectness": number, "technicalDepth": number, "problemSolving": number, "communication": number, "resumeUnderstanding": number, "overallScore": number, "feedback": "string", "performanceLabel": "STRONG"|"WEAK"|"INCORRECT"|"INTERESTING"|"AVERAGE"}`;
 
-    return this.generateJson<DetailedEvaluationResult>(prompt);
+    const raw = asObject(await this.generateJson<unknown>(prompt));
+    const technicalCorrectness = toScore(raw.technicalCorrectness);
+    const technicalDepth = toScore(raw.technicalDepth);
+    const problemSolving = toScore(raw.problemSolving);
+    const communication = toScore(raw.communication);
+    const resumeUnderstanding = toScore(raw.resumeUnderstanding, 50);
+    const overallScore = toScore(
+      raw.overallScore,
+      Math.round(
+        (technicalCorrectness +
+          technicalDepth +
+          problemSolving +
+          communication) /
+          4,
+      ),
+    );
+    const label = toText(raw.performanceLabel).toUpperCase();
+    return {
+      technicalCorrectness,
+      technicalDepth,
+      problemSolving,
+      communication,
+      resumeUnderstanding,
+      overallScore,
+      feedback: toText(
+        raw.feedback,
+        'No feedback was generated for this answer.',
+      ),
+      performanceLabel: (PERFORMANCE_LABELS.has(label)
+        ? label
+        : 'AVERAGE') as DetailedEvaluationResult['performanceLabel'],
+    };
   }
 
   async generateAdvancedReport(context: {
@@ -266,7 +370,33 @@ Produce:
 Respond with ONLY JSON in this exact shape, no markdown:
 {"overallScore": number, "categoryScores": {"technicalCorrectness": number, "technicalDepth": number, "problemSolving": number, "communication": number, "resumeUnderstanding": number}, "summary": "string", "strengths": "string", "weaknesses": "string", "missedConcepts": ["string"], "resumeClaimConfidence": [{"claim": "string", "confidence": number, "notes": "string"}], "motivation": "string"}`;
 
-    return this.generateJson<AdvancedReportResult>(prompt);
+    const raw = asObject(await this.generateJson<unknown>(prompt));
+    const categories = asObject(raw.categoryScores);
+    return {
+      overallScore: toScore(raw.overallScore),
+      summary: toText(raw.summary, 'No summary was generated.'),
+      strengths: toText(raw.strengths, 'No strengths were identified.'),
+      weaknesses: toText(raw.weaknesses, 'No weaknesses were identified.'),
+      categoryScores: {
+        technicalCorrectness: toScore(categories.technicalCorrectness),
+        technicalDepth: toScore(categories.technicalDepth),
+        problemSolving: toScore(categories.problemSolving),
+        communication: toScore(categories.communication),
+        resumeUnderstanding: toScore(categories.resumeUnderstanding),
+      },
+      missedConcepts: toStringArray(raw.missedConcepts),
+      resumeClaimConfidence: Array.isArray(raw.resumeClaimConfidence)
+        ? raw.resumeClaimConfidence
+            .map((c) => asObject(c))
+            .filter((c) => toText(c.claim))
+            .map((c) => ({
+              claim: toText(c.claim),
+              confidence: toScore(c.confidence),
+              notes: toText(c.notes),
+            }))
+        : [],
+      motivation: toText(raw.motivation),
+    };
   }
 
   async generateLearningPlan(context: {
@@ -284,11 +414,31 @@ Produce 2-5 topics to study. For each topic include 2-4 subtopics and 2-3 practi
 Respond with ONLY JSON in this exact shape, no markdown:
 {"topics": [{"topic": "string", "subtopics": ["string"], "practiceQuestions": ["string"]}], "recommendedNextInterview": "string"}`;
 
-    return this.generateJson<LearningPlanResult>(prompt);
+    const raw = asObject(await this.generateJson<unknown>(prompt));
+    const topics = Array.isArray(raw.topics)
+      ? raw.topics
+          .map((t) => asObject(t))
+          .filter((t) => toText(t.topic))
+          .map((t) => ({
+            topic: toText(t.topic),
+            subtopics: toStringArray(t.subtopics),
+            practiceQuestions: toStringArray(t.practiceQuestions),
+          }))
+      : [];
+    return {
+      topics,
+      recommendedNextInterview: toText(
+        raw.recommendedNextInterview,
+        'Retake an interview on the topics above once you have reviewed them.',
+      ),
+    };
   }
 
   private async generateJson<T>(prompt: string): Promise<T> {
-    const model = this.client.getGenerativeModel({ model: this.model });
+    const model = this.client.getGenerativeModel({
+      model: this.model,
+      generationConfig: { responseMimeType: 'application/json' },
+    });
 
     let lastError: unknown;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {

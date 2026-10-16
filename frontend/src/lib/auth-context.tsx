@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useSyncExternalStore, ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useSyncExternalStore, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AUTH_EXPIRED_EVENT } from "./api";
 import type { ApiUser } from "./api";
@@ -27,8 +27,35 @@ function notify() {
   listeners.forEach((callback) => callback());
 }
 
+function readStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    // storage unavailable (private mode / blocked); session will not persist
+  }
+}
+
+function parseUser(raw: string | null): ApiUser | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? (parsed as ApiUser) : null;
+  } catch {
+    return null;
+  }
+}
+
 function getSnapshot(): string | null {
-  return localStorage.getItem("accessToken");
+  return readStorage("accessToken");
 }
 
 function getServerSnapshot(): string | null {
@@ -48,30 +75,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const token = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const storedUser = useSyncExternalStore(
     subscribe,
-    () => localStorage.getItem("user"),
+    () => readStorage("user"),
     () => null
   );
   const mounted = useSyncExternalStore(subscribe, getMountedSnapshot, getServerMountedSnapshot);
-  const user: ApiUser | null = storedUser ? JSON.parse(storedUser) : null;
+  const user = useMemo(() => parseUser(storedUser), [storedUser]);
   const loading = !mounted;
 
   const login = (newToken: string, newUser: ApiUser) => {
-    localStorage.setItem("accessToken", newToken);
-    localStorage.setItem("user", JSON.stringify(newUser));
+    writeStorage("accessToken", newToken);
+    writeStorage("user", JSON.stringify(newUser));
     notify();
   };
 
   const logout = () => {
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("user");
+    writeStorage("accessToken", null);
+    writeStorage("user", null);
     notify();
   };
 
   const updateUser = (patch: Partial<ApiUser>) => {
-    const current = localStorage.getItem("user");
+    const current = parseUser(readStorage("user"));
     if (!current) return;
-    const merged = { ...JSON.parse(current), ...patch };
-    localStorage.setItem("user", JSON.stringify(merged));
+    writeStorage("user", JSON.stringify({ ...current, ...patch }));
     notify();
   };
 

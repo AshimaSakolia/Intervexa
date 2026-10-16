@@ -19,7 +19,13 @@ const CONFETTI_POSITIONS = [
   { left: "95%", top: "15%", size: "4px", color: "var(--accent)" },
 ];
 
-export function ScoreRing({ value }: { value: number }) {
+function clampScore(value: number | null | undefined): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, Math.round(n))) : 0;
+}
+
+export function ScoreRing({ value: rawValue }: { value: number }) {
+  const value = clampScore(rawValue);
   const size = 84;
   const stroke = 7;
   const radius = (size - stroke) / 2;
@@ -54,13 +60,14 @@ export function ScoreRing({ value }: { value: number }) {
 
 export function CategoryBar({
   label,
-  value,
+  value: rawValue,
   delayMs = 0,
 }: {
   label: string;
   value: number;
   delayMs?: number;
 }) {
+  const value = clampScore(rawValue);
   const [width, setWidth] = useState(0);
 
   useEffect(() => {
@@ -88,6 +95,7 @@ type ReportTab = "report" | "plan";
 
 export function ReportView({ interview }: { interview: Interview }) {
   const report = interview.report!;
+  const overallScore = clampScore(report.overallScore);
   const categoryScores = parseCategoryScores(report);
   const missedConcepts = parseMissedConcepts(report);
   const claimConfidence = parseResumeClaimConfidence(report);
@@ -122,7 +130,7 @@ export function ReportView({ interview }: { interview: Interview }) {
         <div className="flex flex-col gap-6 animate-fade-in-up">
           <section className="rounded-lg border border-border bg-paper-raised p-6 flex flex-col gap-5">
             <div className="flex items-center gap-5">
-              <ScoreRing value={report.overallScore} />
+              <ScoreRing value={overallScore} />
               <div>
                 <p className="text-xs font-mono uppercase tracking-wide text-ink-faint">Overall score</p>
                 <h2 className="text-lg font-semibold mt-0.5">Evaluation report</h2>
@@ -141,7 +149,7 @@ export function ReportView({ interview }: { interview: Interview }) {
 
             <div className="pt-2 border-t border-border">
               <p className="font-medium mb-1 text-sm">Summary</p>
-              <p className="text-sm text-ink-soft leading-relaxed">{report.summary}</p>
+              <p className="text-sm text-ink-soft leading-relaxed">{report.summary || "No summary available."}</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -152,7 +160,7 @@ export function ReportView({ interview }: { interview: Interview }) {
                   </svg>
                   Strengths
                 </p>
-                <p className="text-sm text-ink-soft leading-relaxed">{report.strengths}</p>
+                <p className="text-sm text-ink-soft leading-relaxed">{report.strengths || "—"}</p>
               </div>
               <div className="rounded-md bg-bad-bg p-4 flex flex-col gap-1.5">
                 <p className="font-medium text-sm text-bad flex items-center gap-1.5">
@@ -161,7 +169,7 @@ export function ReportView({ interview }: { interview: Interview }) {
                   </svg>
                   Weaknesses
                 </p>
-                <p className="text-sm text-ink-soft leading-relaxed">{report.weaknesses}</p>
+                <p className="text-sm text-ink-soft leading-relaxed">{report.weaknesses || "—"}</p>
               </div>
             </div>
 
@@ -187,7 +195,7 @@ export function ReportView({ interview }: { interview: Interview }) {
                       <div className="flex justify-between gap-2 font-medium">
                         <span>{c.claim}</span>
                         <span className="shrink-0 font-mono tabular-nums text-ink-soft">
-                          {c.confidence}/100
+                          {clampScore(c.confidence)}/100
                         </span>
                       </div>
                       <p className="text-ink-soft mt-1">{c.notes}</p>
@@ -203,7 +211,7 @@ export function ReportView({ interview }: { interview: Interview }) {
               className="relative overflow-hidden rounded-lg border-l-2 border-l-accent bg-info-bg p-5 flex flex-col gap-4"
               style={{ animationDelay: "120ms" }}
             >
-              {report.overallScore >= 75 && (
+              {overallScore >= 75 && (
                 <div className="pointer-events-none absolute inset-0" aria-hidden="true">
                   {CONFETTI_POSITIONS.map((pos, i) => (
                     <span
@@ -223,7 +231,7 @@ export function ReportView({ interview }: { interview: Interview }) {
               )}
               <div className="flex items-start gap-3">
                 <span className="text-xl leading-none" aria-hidden="true">
-                  {report.overallScore >= 75 ? "🎉" : report.overallScore >= 50 ? "💪" : "🌱"}
+                  {overallScore >= 75 ? "🎉" : overallScore >= 50 ? "💪" : "🌱"}
                 </span>
                 <p className="text-sm leading-relaxed">{report.motivation}</p>
               </div>
@@ -245,23 +253,23 @@ export function ReportView({ interview }: { interview: Interview }) {
             {learningPlanTopics.map((t, i) => (
               <li key={i} className="flex flex-col gap-2 pb-5 border-b border-border last:border-0 last:pb-0">
                 <p className="font-medium">{t.topic}</p>
-                {t.subtopics.length > 0 && (
+                {(t.subtopics?.length ?? 0) > 0 && (
                   <div>
                     <p className="text-xs font-mono uppercase tracking-wide text-ink-faint">Subtopics</p>
                     <ul className="list-disc list-inside text-sm text-ink-soft mt-1">
-                      {t.subtopics.map((s, j) => (
+                      {t.subtopics!.map((s, j) => (
                         <li key={j}>{s}</li>
                       ))}
                     </ul>
                   </div>
                 )}
-                {t.practiceQuestions.length > 0 && (
+                {(t.practiceQuestions?.length ?? 0) > 0 && (
                   <div>
                     <p className="text-xs font-mono uppercase tracking-wide text-ink-faint">
                       Practice questions
                     </p>
                     <ul className="list-disc list-inside text-sm text-ink-soft mt-1">
-                      {t.practiceQuestions.map((q, j) => (
+                      {t.practiceQuestions!.map((q, j) => (
                         <li key={j}>{q}</li>
                       ))}
                     </ul>

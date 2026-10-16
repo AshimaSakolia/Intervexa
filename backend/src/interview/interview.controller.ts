@@ -1,14 +1,7 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  ParseIntPipe,
-  Post,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ParseIdPipe } from '../common/parse-id.pipe';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { InterviewService } from './interview.service';
 import { CreateInterviewDto } from './dto/create-interview.dto';
@@ -38,7 +31,7 @@ export class InterviewController {
   @Get(':id')
   findOne(
     @CurrentUser() user: { userId: number },
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseIdPipe) id: number,
   ) {
     return this.interviewService.findOne(user.userId, id);
   }
@@ -47,17 +40,26 @@ export class InterviewController {
   @Throttle(AI_CALL_THROTTLE)
   submitAnswer(
     @CurrentUser() user: { userId: number },
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseIdPipe) id: number,
     @Body() dto: SubmitAnswerDto,
   ) {
     return this.interviewService.submitAnswer(user.userId, id, dto);
+  }
+
+  @Post(':id/next-question')
+  @Throttle(AI_CALL_THROTTLE)
+  nextQuestion(
+    @CurrentUser() user: { userId: number },
+    @Param('id', ParseIdPipe) id: number,
+  ) {
+    return this.interviewService.ensureNextQuestion(user.userId, id);
   }
 
   @Post(':id/complete')
   @Throttle(AI_CALL_THROTTLE)
   complete(
     @CurrentUser() user: { userId: number },
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseIdPipe) id: number,
   ) {
     return this.interviewService.completeInterview(user.userId, id);
   }

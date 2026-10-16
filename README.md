@@ -109,6 +109,7 @@ npm run dev              # http://localhost:3009
 | GET    | `/interviews`                 | List your interviews                            |
 | GET    | `/interviews/:id`             | Get one interview (questions, answers, report)  |
 | POST   | `/interviews/:id/answers`     | Submit an answer — returns score + the next question |
+| POST   | `/interviews/:id/next-question` | Retry next-question generation (idempotent)     |
 | POST   | `/interviews/:id/complete`    | Generate the final report and learning plan     |
 | GET    | `/health`                     | Health check (verifies DB connectivity)         |
 
@@ -122,5 +123,9 @@ usage.
 ```bash
 cd backend
 npm run test        # unit tests
-npm run test:e2e     # end-to-end tests
+npm run test:e2e     # end-to-end tests (Gemini stubbed)
 ```
+
+The e2e tests never use `.env`: they run against a scratch Postgres database
+(`QA_DATABASE_URL`, default `postgresql://interviewiq:interviewiq@localhost:3308/interviewiq_qa`).
+Create it once and apply migrations with `DATABASE_URL=<that url> npx prisma migrate deploy`.

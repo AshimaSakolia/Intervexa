@@ -44,7 +44,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const { user, token, loading, updateUser } = useAuth();
   const { showToast } = useToast();
-  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideDismissed, setGuideDismissed] = useState(false);
   const [resumes, setResumes] = useState<Resume[]>([]);
   const [selectedResumeId, setSelectedResumeId] = useState<number | null>(null);
   const [targetRole, setTargetRole] = useState("");
@@ -63,14 +63,10 @@ export default function DashboardPage() {
     }
   }, [loading, token, router]);
 
-  useEffect(() => {
-    if (user && !user.hasSeenGuide) {
-      setGuideOpen(true);
-    }
-  }, [user]);
+  const guideOpen = !!user && !user.hasSeenGuide && !guideDismissed;
 
   const handleGuideClose = () => {
-    setGuideOpen(false);
+    setGuideDismissed(true);
     updateUser({ hasSeenGuide: true });
     if (token) {
       api.completeOnboarding(token).catch(() => {});
@@ -79,25 +75,45 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!token) return;
+    let cancelled = false;
     api
       .getInterviews(token)
-      .then(setInterviews)
-      .catch((err) => setListError(err instanceof Error ? err.message : "Failed to load interviews"))
-      .finally(() => setListLoading(false));
+      .then((data) => {
+        if (!cancelled) setInterviews(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setListError(err instanceof Error ? err.message : "Failed to load interviews");
+      })
+      .finally(() => {
+        if (!cancelled) setListLoading(false);
+      });
     api
       .getResumes(token)
       .then((data) => {
+        if (cancelled) return;
         setResumes(data);
         if (data.length > 0) setSelectedResumeId(data[0].id);
       })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token) return;
+    if (!token || creating) return;
     if (!selectedResumeId) {
       setFormError("Upload a resume first");
+      return;
+    }
+    const role = targetRole.trim();
+    if (!role) {
+      setFormError("Target role is required");
+      return;
+    }
+    if (!Number.isInteger(maxQuestions) || maxQuestions < 3 || maxQuestions > 10) {
+      setFormError("Questions must be a whole number between 3 and 10");
       return;
     }
     setFormError(null);
@@ -105,7 +121,7 @@ export default function DashboardPage() {
     try {
       const interview = await api.createInterview(token, {
         resumeId: selectedResumeId,
-        targetRole,
+        targetRole: role,
         interviewType,
         difficulty,
         maxQuestions,

@@ -17,22 +17,29 @@ export default function InterviewReportPage() {
 
   useEffect(() => {
     if (!loading && !token) {
-      router.push("/login");
+      router.replace("/login");
     }
   }, [loading, token, router]);
 
   useEffect(() => {
     if (!token) return;
+    let cancelled = false;
     api
       .getInterview(token, params.id)
       .then((data) => {
+        if (cancelled) return;
         if (!data.report) {
           router.replace(`/interview/${params.id}`);
           return;
         }
         setInterview(data);
       })
-      .catch((err) => setFetchError(err instanceof Error ? err.message : "Failed to load report"));
+      .catch((err) => {
+        if (!cancelled) setFetchError(err instanceof Error ? err.message : "Failed to load report");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [token, params.id, router]);
 
   if (loading || !token) {

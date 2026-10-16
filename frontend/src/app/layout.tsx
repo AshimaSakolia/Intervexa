@@ -9,6 +9,7 @@ import { SiteHeader } from "@/components/site-header";
 import { AccountMenu } from "@/components/account-menu";
 import { PageTransition } from "@/components/page-transition";
 import { AppSideRails } from "@/components/app-side-rails";
+import { ServerWarmup } from "@/components/server-warmup";
 
 const THEME_INIT_SCRIPT = `
 (function () {
@@ -50,6 +51,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <Script id="theme-init" strategy="beforeInteractive">
           {THEME_INIT_SCRIPT}
         </Script>
+        <ServerWarmup />
         <ThemeProvider>
           <AuthProvider>
             <ToastProvider>

@@ -10,6 +10,8 @@ import { Skeleton } from "@/components/skeleton";
 import { BackLink, BackLinkInline } from "@/components/back-link";
 import { ConfirmModal } from "@/components/confirm-modal";
 
+const MAX_RESUME_BYTES = 5 * 1024 * 1024;
+
 function ResumeCard({
   resume,
   onDelete,
@@ -27,6 +29,8 @@ function ResumeCard({
     try {
       await onDelete(resume.id);
       setConfirmOpen(false);
+    } catch {
+      // error toast is shown by the parent; keep the modal open for retry
     } finally {
       setDeleting(false);
     }
@@ -68,7 +72,7 @@ function ResumeCard({
 
       {expanded && analysis && (
         <div className="flex flex-col gap-4 pt-3 border-t border-border">
-          {analysis.skills.length > 0 && (
+          {(analysis.skills?.length ?? 0) > 0 && (
             <div>
               <p className="text-xs font-mono uppercase tracking-wide text-ink-faint mb-1.5">Skills</p>
               <div className="flex flex-wrap gap-1.5">
@@ -81,7 +85,7 @@ function ResumeCard({
             </div>
           )}
 
-          {analysis.technologies.length > 0 && (
+          {(analysis.technologies?.length ?? 0) > 0 && (
             <div>
               <p className="text-xs font-mono uppercase tracking-wide text-ink-faint mb-1.5">
                 Technologies
@@ -99,7 +103,7 @@ function ResumeCard({
             </div>
           )}
 
-          {analysis.projects.length > 0 && (
+          {(analysis.projects?.length ?? 0) > 0 && (
             <div>
               <p className="text-xs font-mono uppercase tracking-wide text-ink-faint mb-1.5">
                 Projects
@@ -112,7 +116,7 @@ function ResumeCard({
             </div>
           )}
 
-          {analysis.experience.length > 0 && (
+          {(analysis.experience?.length ?? 0) > 0 && (
             <div>
               <p className="text-xs font-mono uppercase tracking-wide text-ink-faint mb-1.5">
                 Experience
@@ -125,7 +129,7 @@ function ResumeCard({
             </div>
           )}
 
-          {resume.claims.length > 0 && (
+          {(resume.claims?.length ?? 0) > 0 && (
             <div>
               <p className="text-xs font-mono uppercase tracking-wide text-ink-faint mb-1.5">
                 Resume claims
@@ -170,6 +174,7 @@ export default function ResumePage() {
   const [listLoading, setListLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !token) {
@@ -179,16 +184,44 @@ export default function ResumePage() {
 
   useEffect(() => {
     if (!token) return;
+    let cancelled = false;
     api
       .getResumes(token)
-      .then(setResumes)
-      .finally(() => setListLoading(false));
+      .then((data) => {
+        if (!cancelled) setResumes(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setListError(err instanceof Error ? err.message : "Failed to load resumes");
+      })
+      .finally(() => {
+        if (!cancelled) setListLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !token) return;
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file || !token || uploading) return;
     setError(null);
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf) {
+      setError("Only PDF files are supported");
+      input.value = "";
+      return;
+    }
+    if (file.size > MAX_RESUME_BYTES) {
+      setError("Resume must be 5MB or smaller");
+      input.value = "";
+      return;
+    }
+    if (file.size === 0) {
+      setError("That file is empty");
+      input.value = "";
+      return;
+    }
     setUploading(true);
     try {
       const resume = await api.uploadResume(token, file);
@@ -198,7 +231,7 @@ export default function ResumePage() {
       setError(err instanceof Error ? err.message : "Failed to upload resume");
     } finally {
       setUploading(false);
-      e.target.value = "";
+      input.value = "";
     }
   };
 
@@ -231,7 +264,7 @@ export default function ResumePage() {
 
       <div className="rounded-lg border border-border bg-paper-raised p-6 flex flex-col gap-3">
         <label
-          className={`cursor-pointer self-start inline-block ${buttonClassName(
+          className={`cursor-pointer self-start inline-block focus-within:ring-2 focus-within:ring-accent focus-within:ring-offset-2 ${buttonClassName(
             "primary",
             uploading ? "pointer-events-none" : ""
           )}`}
@@ -242,7 +275,7 @@ export default function ResumePage() {
             accept="application/pdf"
             onChange={handleFileChange}
             disabled={uploading}
-            className="hidden"
+            className="sr-only"
           />
         </label>
         {error && <p className="text-sm text-bad rounded-md bg-bad-bg px-3 py-2">{error}</p>}
@@ -255,7 +288,8 @@ export default function ResumePage() {
             <Skeleton className="h-20 w-full rounded-lg" />
           </>
         )}
-        {!listLoading && resumes.length === 0 && (
+        {listError && <p className="text-sm text-bad rounded-md bg-bad-bg px-3 py-2">{listError}</p>}
+        {!listLoading && !listError && resumes.length === 0 && (
           <p className="text-sm text-ink-soft">No resumes uploaded yet.</p>
         )}
         {resumes.map((resume) => (

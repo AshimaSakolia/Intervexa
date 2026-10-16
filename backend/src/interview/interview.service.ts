@@ -72,7 +72,15 @@ export class InterviewService {
       },
     });
 
-    await this.generateAndStoreNextQuestion(interview.id);
+    try {
+      await this.generateAndStoreNextQuestion(interview.id);
+    } catch (error) {
+      // Don't leave an interview with no questions behind when the AI fails.
+      await this.prisma.interview
+        .delete({ where: { id: interview.id } })
+        .catch(() => undefined);
+      throw error;
+    }
 
     return this.findOne(userId, interview.id);
   }
@@ -101,8 +109,32 @@ export class InterviewService {
     return this.prisma.interview.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
+      omit: { resumeText: true },
       include: { questions: true, report: true },
     });
+  }
+
+  /**
+   * Returns the question awaiting an answer, generating it if the previous
+   * generation failed. Safe to call repeatedly.
+   */
+  async ensureNextQuestion(userId: number, interviewId: number) {
+    const interview = await this.findOne(userId, interviewId);
+
+    if (interview.status === 'COMPLETED') {
+      throw new BadRequestException('This interview is already completed');
+    }
+
+    const pending = interview.questions.find((q) => !q.answer);
+    if (pending) return pending;
+
+    if (interview.questions.length >= interview.maxQuestions) {
+      throw new BadRequestException(
+        'All questions have been answered. Complete the interview to get your report.',
+      );
+    }
+
+    return this.generateAndStoreNextQuestion(interviewId);
   }
 
   async submitAnswer(
@@ -150,11 +182,27 @@ export class InterviewService {
       interview.questions.filter((q) => q.answer).length + 1;
     const hasNextQuestion = answeredCount < interview.maxQuestions;
 
-    const nextQuestion = hasNextQuestion
-      ? await this.generateAndStoreNextQuestion(interviewId)
-      : null;
+    // The answer is already saved; if the AI can't produce the next question
+    // right now, report that instead of failing so the client can retry via
+    // POST /interviews/:id/next-question.
+    let nextQuestion: Awaited<
+      ReturnType<typeof this.generateAndStoreNextQuestion>
+    > | null = null;
+    let nextQuestionFailed = false;
+    if (hasNextQuestion) {
+      try {
+        nextQuestion = await this.generateAndStoreNextQuestion(interviewId);
+      } catch {
+        nextQuestionFailed = true;
+      }
+    }
 
-    return { answer, nextQuestion, isLastQuestion: !hasNextQuestion };
+    return {
+      answer,
+      nextQuestion,
+      isLastQuestion: !hasNextQuestion,
+      nextQuestionFailed,
+    };
   }
 
   async completeInterview(userId: number, interviewId: number) {
@@ -200,24 +248,31 @@ export class InterviewService {
         qa,
       });
 
-      report = await this.prisma.report.create({
-        data: {
-          interviewId,
-          overallScore: reportResult.overallScore,
-          summary: reportResult.summary,
-          strengths: reportResult.strengths,
-          weaknesses: reportResult.weaknesses,
-          categoryScores: JSON.stringify(reportResult.categoryScores),
-          missedConcepts: JSON.stringify(reportResult.missedConcepts),
-          resumeClaimConfidence: JSON.stringify(
-            reportResult.resumeClaimConfidence,
-          ),
-          motivation: reportResult.motivation,
-        },
-      });
-
-      reportWeaknesses = reportResult.weaknesses;
-      reportMissedConcepts = reportResult.missedConcepts;
+      try {
+        report = await this.prisma.report.create({
+          data: {
+            interviewId,
+            overallScore: reportResult.overallScore,
+            summary: reportResult.summary,
+            strengths: reportResult.strengths,
+            weaknesses: reportResult.weaknesses,
+            categoryScores: JSON.stringify(reportResult.categoryScores),
+            missedConcepts: JSON.stringify(reportResult.missedConcepts),
+            resumeClaimConfidence: JSON.stringify(
+              reportResult.resumeClaimConfidence,
+            ),
+            motivation: reportResult.motivation,
+          },
+        });
+        reportWeaknesses = reportResult.weaknesses;
+        reportMissedConcepts = reportResult.missedConcepts;
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) throw error;
+        // A concurrent request already completed this interview.
+        return this.prisma.report.findUniqueOrThrow({
+          where: { interviewId },
+        });
+      }
     }
 
     const learningPlanResult = await this.gemini.generateLearningPlan({
@@ -226,24 +281,31 @@ export class InterviewService {
       missedConcepts: reportMissedConcepts ?? [],
     });
 
-    await this.prisma.$transaction([
-      this.prisma.learningPlan.upsert({
-        where: { interviewId },
-        create: {
-          interviewId,
-          topics: JSON.stringify(learningPlanResult.topics),
-          recommendedNextInterview: learningPlanResult.recommendedNextInterview,
-        },
-        update: {
-          topics: JSON.stringify(learningPlanResult.topics),
-          recommendedNextInterview: learningPlanResult.recommendedNextInterview,
-        },
-      }),
-      this.prisma.interview.update({
-        where: { id: interviewId },
-        data: { status: 'COMPLETED', completedAt: new Date() },
-      }),
-    ]);
+    try {
+      await this.prisma.$transaction([
+        this.prisma.learningPlan.upsert({
+          where: { interviewId },
+          create: {
+            interviewId,
+            topics: JSON.stringify(learningPlanResult.topics),
+            recommendedNextInterview:
+              learningPlanResult.recommendedNextInterview,
+          },
+          update: {
+            topics: JSON.stringify(learningPlanResult.topics),
+            recommendedNextInterview:
+              learningPlanResult.recommendedNextInterview,
+          },
+        }),
+        this.prisma.interview.update({
+          where: { id: interviewId },
+          data: { status: 'COMPLETED', completedAt: new Date() },
+        }),
+      ]);
+    } catch (error) {
+      // A concurrent request won the race to write the plan; that's fine.
+      if (!isUniqueConstraintError(error)) throw error;
+    }
 
     return report;
   }
@@ -346,9 +408,13 @@ export class InterviewService {
       });
     } catch (error) {
       if (isUniqueConstraintError(error)) {
-        throw new ConflictException(
-          'The next question is already being generated for this interview',
-        );
+        // A concurrent request already stored this question number.
+        const existing = await this.prisma.question.findUnique({
+          where: {
+            interviewId_order: { interviewId, order: nextQuestionNumber },
+          },
+        });
+        if (existing) return existing;
       }
       throw error;
     }

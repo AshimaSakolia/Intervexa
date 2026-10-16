@@ -40,7 +40,7 @@ export function Modal({
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className="relative w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-lg border border-border bg-paper-raised shadow-lg animate-scale-in">
+      <div role="dialog" aria-modal="true" className="relative w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-lg border border-border bg-paper-raised shadow-lg animate-scale-in">
         {children}
       </div>
     </div>,

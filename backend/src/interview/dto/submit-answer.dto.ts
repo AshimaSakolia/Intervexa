@@ -1,8 +1,17 @@
 import { Transform } from 'class-transformer';
-import { IsInt, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsInt,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class SubmitAnswerDto {
   @IsInt()
+  @Min(1)
+  @Max(2_147_483_647)
   questionId: number;
 
   @Transform(({ value }: { value: unknown }) =>

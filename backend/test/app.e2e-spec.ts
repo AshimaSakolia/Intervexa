@@ -1,3 +1,11 @@
+// Never run e2e tests against the database configured in .env.
+process.env.DATABASE_URL =
+  process.env.QA_DATABASE_URL ??
+  'postgresql://interviewiq:interviewiq@localhost:3308/interviewiq_qa';
+process.env.JWT_SECRET = 'qa-secret-qa-secret';
+process.env.GEMINI_API_KEY = 'fake';
+process.env.FRONTEND_URL = 'http://localhost:3009';
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';

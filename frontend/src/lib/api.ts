@@ -135,6 +135,7 @@ export interface SubmitAnswerResponse {
   answer: Answer;
   nextQuestion: Question | null;
   isLastQuestion: boolean;
+  nextQuestionFailed?: boolean;
 }
 
 export const AUTH_EXPIRED_EVENT = "auth:expired";
@@ -193,7 +194,8 @@ async function request<T>(
 export function parseAnalysis(resume: Resume | null | undefined): ResumeAnalysis | null {
   if (!resume?.analysis) return null;
   try {
-    return JSON.parse(resume.analysis) as ResumeAnalysis;
+    const parsed = JSON.parse(resume.analysis);
+    return parsed && typeof parsed === "object" ? (parsed as ResumeAnalysis) : null;
   } catch {
     return null;
   }
@@ -202,7 +204,8 @@ export function parseAnalysis(resume: Resume | null | undefined): ResumeAnalysis
 export function parseCategoryScores(report: Report | null | undefined): CategoryScores | null {
   if (!report?.categoryScores) return null;
   try {
-    return JSON.parse(report.categoryScores) as CategoryScores;
+    const parsed = JSON.parse(report.categoryScores);
+    return parsed && typeof parsed === "object" ? (parsed as CategoryScores) : null;
   } catch {
     return null;
   }
@@ -211,7 +214,8 @@ export function parseCategoryScores(report: Report | null | undefined): Category
 export function parseMissedConcepts(report: Report | null | undefined): string[] {
   if (!report?.missedConcepts) return [];
   try {
-    return JSON.parse(report.missedConcepts) as string[];
+    const parsed = JSON.parse(report.missedConcepts);
+    return Array.isArray(parsed) ? (parsed as string[]) : [];
   } catch {
     return [];
   }
@@ -220,7 +224,8 @@ export function parseMissedConcepts(report: Report | null | undefined): string[]
 export function parseResumeClaimConfidence(report: Report | null | undefined): ResumeClaimConfidence[] {
   if (!report?.resumeClaimConfidence) return [];
   try {
-    return JSON.parse(report.resumeClaimConfidence) as ResumeClaimConfidence[];
+    const parsed = JSON.parse(report.resumeClaimConfidence);
+    return Array.isArray(parsed) ? (parsed as ResumeClaimConfidence[]) : [];
   } catch {
     return [];
   }
@@ -229,7 +234,8 @@ export function parseResumeClaimConfidence(report: Report | null | undefined): R
 export function parseLearningPlanTopics(plan: LearningPlan | null | undefined): LearningPlanTopic[] {
   if (!plan?.topics) return [];
   try {
-    return JSON.parse(plan.topics) as LearningPlanTopic[];
+    const parsed = JSON.parse(plan.topics);
+    return Array.isArray(parsed) ? (parsed as LearningPlanTopic[]) : [];
   } catch {
     return [];
   }
@@ -278,6 +284,9 @@ export const api = {
       token,
       body: { questionId, text },
     }),
+
+  nextQuestion: (token: string, interviewId: string | number) =>
+    request<Question>(`/interviews/${interviewId}/next-question`, { method: "POST", token }),
 
   completeInterview: (token: string, interviewId: string | number) =>
     request<Report>(`/interviews/${interviewId}/complete`, { method: "POST", token }),

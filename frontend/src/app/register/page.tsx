@@ -30,9 +30,14 @@ export default function RegisterPage() {
     e.preventDefault();
     if (submitting) return;
     setError(null);
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("Name is required");
+      return;
+    }
     setSubmitting(true);
     try {
-      const res = await api.register(email, password, name);
+      const res = await api.register(email.trim(), password, trimmedName);
       login(res.accessToken, res.user);
       clearToasts();
       showToast(`Welcome, ${res.user.name}`, "success");
@@ -66,6 +71,7 @@ export default function RegisterPage() {
               id="name"
               type="text"
               required
+              maxLength={100}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="rounded-md border border-border bg-paper px-3 py-2 outline-none transition-all duration-200 ease-out-snap focus:border-accent focus:shadow-sm focus:shadow-accent/10"
@@ -94,6 +100,7 @@ export default function RegisterPage() {
                 type={showPassword ? "text" : "password"}
                 required
                 minLength={6}
+                maxLength={72}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-md border border-border bg-paper px-3 py-2 pr-16 outline-none transition-all duration-200 ease-out-snap focus:border-accent focus:shadow-sm focus:shadow-accent/10"
