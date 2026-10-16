@@ -3,7 +3,11 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import {
+  GoogleGenerativeAI,
+  GoogleGenerativeAIRequestInputError,
+  GoogleGenerativeAIResponseError,
+} from '@google/generative-ai';
 
 export interface DetailedEvaluationResult {
   technicalCorrectness: number;
@@ -91,9 +95,11 @@ function asObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
-const RETRYABLE_STATUS_CODES = new Set([429, 503]);
+const RETRYABLE_STATUS_CODES = new Set([429, 500, 503, 504]);
 const MAX_RETRIES = 3;
 const BASE_RETRY_DELAY_MS = 1000;
+/** Per-attempt cap so a hung call can't block the request indefinitely. */
+const REQUEST_TIMEOUT_MS = 15_000;
 
 @Injectable()
 export class GeminiService {
@@ -443,21 +449,20 @@ Respond with ONLY JSON in this exact shape, no markdown:
     let lastError: unknown;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const result = await model.generateContent(prompt);
+        const result = await model.generateContent(prompt, {
+          timeout: REQUEST_TIMEOUT_MS,
+        });
         const text = result.response.text();
         return this.parseJsonObject<T>(text);
       } catch (error) {
         lastError = error;
-        const status = this.extractStatusCode(error);
-
-        if (
-          status &&
-          RETRYABLE_STATUS_CODES.has(status) &&
-          attempt < MAX_RETRIES
-        ) {
-          const delay = BASE_RETRY_DELAY_MS * 2 ** attempt;
+        if (this.isRetryableError(error) && attempt < MAX_RETRIES) {
+          // Jitter (50-100% of the exponential delay) so concurrent clients that
+          // failed together don't retry in lockstep.
+          const ceiling = BASE_RETRY_DELAY_MS * 2 ** attempt;
+          const delay = Math.round(ceiling / 2 + Math.random() * (ceiling / 2));
           this.logger.warn(
-            `Gemini request failed with status ${status}, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`,
+            `Gemini request failed (${this.describeError(error)}), retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`,
           );
           await this.sleep(delay);
           continue;
@@ -480,6 +485,27 @@ Respond with ONLY JSON in this exact shape, no markdown:
     throw new ServiceUnavailableException(
       'The AI service is temporarily unavailable. Please try again in a moment.',
     );
+  }
+
+  /**
+   * Transient failures worth retrying: retryable HTTP statuses, plus errors
+   * with no status at all (timeouts/aborts and network failures such as
+   * ECONNRESET). Malformed JSON, blocked responses and bad requests are not.
+   */
+  private isRetryableError(error: unknown): boolean {
+    const status = this.extractStatusCode(error);
+    if (status !== undefined) return RETRYABLE_STATUS_CODES.has(status);
+    return !(
+      error instanceof SyntaxError ||
+      error instanceof GoogleGenerativeAIResponseError ||
+      error instanceof GoogleGenerativeAIRequestInputError
+    );
+  }
+
+  private describeError(error: unknown): string {
+    const status = this.extractStatusCode(error);
+    if (status !== undefined) return `status ${status}`;
+    return error instanceof Error ? error.message : String(error);
   }
 
   private extractStatusCode(error: unknown): number | undefined {
